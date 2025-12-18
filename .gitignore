@@ -12,3 +12,6 @@ dist/*
 .vscode
 .venv
 .DS_Store
+# data
+*bin
+*.plan

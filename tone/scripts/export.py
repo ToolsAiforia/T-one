@@ -183,6 +183,7 @@ class ModelToExport(torch.nn.Module):
             for place, shape in zip(self._state_place, self._state_shape)
         ]
         with torch.amp.autocast(signal.device.type, dtype=torch.float16):
+            print(f"{signal.shape=}")
             res, *state_next = self._model.forward_for_export(
                 signal,
                 *state[:3],

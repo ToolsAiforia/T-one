@@ -1,7 +1,7 @@
 """Package for the demonstration of T-one — a streaming CTC-based ASR pipeline for Russian."""
 
 from .decoder import BeamSearchCTCDecoder, DecoderType, GreedyCTCDecoder
-from .demo import read_audio, read_example_audio, read_stream_example_audio
+from .demo import read_audio, read_stream_audio, read_example_audio, read_stream_example_audio
 from .logprob_splitter import LogprobPhrase, StreamingLogprobSplitter
 from .onnx_wrapper import StreamingCTCModel
 from .pipeline import StreamingCTCPipeline, TextPhrase
@@ -17,6 +17,7 @@ __all__ = [
     "StreamingLogprobSplitter",
     "TextPhrase",
     "read_audio",
+    "read_stream_audio",
     "read_example_audio",
     "read_stream_example_audio",
 ]
