@@ -53,6 +53,16 @@ def read_audio(path_to_file: Path | str) -> npt.NDArray[np.int32]:
     return np.asarray(audio.samples, dtype=np.int16).astype(np.int32)
 
 
+def read_stream_audio(path_to_file: Path | str, chunk_size: int = StreamingCTCPipeline.CHUNK_SIZE) -> Iterator[StreamingCTCPipeline.InputType]:
+    audio = read_audio(path_to_file=path_to_file)
+    # See description of PADDING in StreamingCTCPipeline
+    audio = np.pad(audio, (StreamingCTCPipeline.PADDING, StreamingCTCPipeline.PADDING))
+    for i in range(0, len(audio), chunk_size):
+        audio_chunk = audio[i : i + chunk_size]
+        audio_chunk = np.pad(audio_chunk, (0, -len(audio_chunk) % chunk_size))
+        yield audio_chunk
+
+
 def read_stream_example_audio(*, long_audio: bool = False) -> Iterator[StreamingCTCPipeline.InputType]:
     """Simple example of streaming audio source using example audio from the package."""
     chunk_size = StreamingCTCPipeline.CHUNK_SIZE

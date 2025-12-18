@@ -133,6 +133,7 @@ class Tone(nn.Module):
         # https://github.com/triton-inference-server/server/issues/3901
         state_mhsa_len = state_mhsa_len[:, 0]
 
+        # print(f"Before encoder sub-sampling:\n{inputs.shape=}")
         encoder_output, _ = self.encoder(
             audio_signal=inputs,
             state_mhsa=state_mhsa,

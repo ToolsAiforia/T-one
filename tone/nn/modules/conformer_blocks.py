@@ -11,6 +11,7 @@ from dataclasses import dataclass
 
 import torch
 from torch import nn
+import torch.nn.functional as F
 
 from tone.nn.modules.submodules import (
     CausalConv1D,
@@ -211,7 +212,7 @@ class EncoderState:
             padding_length = length
 
         padding_length_original = padding_length
-        padding_length_reduced = padding_length // 2
+        padding_length_reduced = padding_length // self.reduction_factor
 
         att_mask = pad_mask = None
         for layer_index, layer in enumerate(self.layers):
@@ -253,10 +254,22 @@ class EncoderState:
         in_reduced_block = self.reduction_position < layer_index <= self.upsample_position
         if in_reduced_block:
             reduction = self.reduction_factor
+            orig_state_size = mhsa_state_size
             mhsa_state_size //= reduction
             chunk_size //= reduction
             left_context = self.left_context_size // reduction
-            max_audio_length = math.ceil(max_audio_length / reduction)
+
+            if self.streaming:
+                # Здесь всегда делался max_audio_length = math.ceil(max_audio_length / reduction)
+                # как будто мы делаем правый паддинг
+                # но правый паддинг мы делаем только в оффлайн режим
+                # см. CausalTemporalReduction forward
+                chunk_len = max_audio_length - orig_state_size
+                max_audio_length = mhsa_state_size + (chunk_len // reduction)
+            else:
+                # Offline temporal reduction pads; keep ceil behavior
+                max_audio_length = math.ceil(max_audio_length / reduction)
+
             offset = offset // reduction if offset is not None else None
         else:
             left_context = self.left_context_size
@@ -937,7 +950,7 @@ class TemporalUpsampling(nn.Module):
 
     def __init__(self, upsampling_factor: int = 2) -> None:
         super().__init__()
-        self.upsampling_factor = upsampling_factor
+        self.upsampling_factor = int(upsampling_factor)
 
     def forward(
         self,
@@ -953,18 +966,23 @@ class TemporalUpsampling(nn.Module):
            state (EncoderState): state for the current layer of the Conformer.
 
         """
+        if state.residual is None:
+            raise RuntimeError("TemporalUpsampling requires state.residual to be set.")
+        r = self.upsampling_factor
+        # (B, T_red, D) -> (B, r*T_red, D)
         audio_signal = torch.repeat_interleave(
             audio_signal,
             repeats=self.upsampling_factor,
             dim=1,
         )
-        audio_signal = audio_signal[:, : state.residual.size(1), :]
-        audio_signal += state.residual
+        if r > 1:
+            audio_signal = F.pad(audio_signal, (0, 0, 0, r - 1))
+        T_res = state.residual.shape[1]
+        audio_signal = audio_signal[:, :T_res, :]
+        audio_signal = audio_signal + state.residual
 
-        # Adjust the lengths so they match state.residual
         if length is not None:
-            length = length * self.upsampling_factor
-            length_diff = audio_signal.size(1) - state.residual.size(1)
-            if length_diff > 0:
-                length -= length_diff
+            length = length * r
+            length = torch.clamp(length, max=T_res)
+
         return audio_signal, length

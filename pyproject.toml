@@ -14,6 +14,7 @@ dependencies = [
     "onnxruntime (>=1.12.0,<2.0.0) ; python_version >= '3.10'",
     "pyctcdecode (>=0.2.0,<1.0.0)",
     "kenlm (>=0.2.0,<1.0.0)",
+    "onnxruntime-gpu (==1.19.2)",
 ]
 
 

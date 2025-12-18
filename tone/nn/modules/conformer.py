@@ -205,6 +205,7 @@ class Encoder(nn.Module):
             lengths=length,
             state=self.state,
         )
+        # print(f"After encoder sub-sampling:\n{audio_signal.shape=};{length=}")
 
         # Create masks for each Conformer layer according to config
         self.state.create_masks(
