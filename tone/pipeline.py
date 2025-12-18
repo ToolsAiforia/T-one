@@ -8,7 +8,7 @@ from shutil import copyfile
 
 import numpy as np
 import numpy.typing as npt
-from typing_extensions import Self, TypeAlias
+from typing_extensions import Self, TypeAlias, Optional, List
 
 from tone.decoder import BeamSearchCTCDecoder, DecoderType, GreedyCTCDecoder
 from tone.logprob_splitter import StreamingLogprobSplitter
@@ -84,10 +84,10 @@ class StreamingCTCPipeline:
             copyfile(BeamSearchCTCDecoder.download_from_hugging_face(), dir_path / "kenlm.bin")
 
     @classmethod
-    def from_local(cls, dir_path: str | Path, *, decoder_type: DecoderType = DecoderType.BEAM_SEARCH) -> Self:
+    def from_local(cls, dir_path: str | Path, *, decoder_type: DecoderType = DecoderType.BEAM_SEARCH, providers: Optional[List[str]] = None) -> Self:
         """Create StreamingCTCPipeline instance using artifacts from local folder."""
         dir_path = Path(dir_path)
-        model = StreamingCTCModel.from_local(dir_path / "model.onnx")
+        model = StreamingCTCModel.from_local(dir_path / "model.onnx", providers=providers)
         logprob_splitter = StreamingLogprobSplitter()
         if decoder_type == DecoderType.GREEDY:
             decoder = GreedyCTCDecoder()

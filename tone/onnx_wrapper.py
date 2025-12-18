@@ -2,7 +2,7 @@
 
 from __future__ import annotations
 
-from typing import TYPE_CHECKING
+from typing import TYPE_CHECKING, Optional, List
 
 if TYPE_CHECKING:
     from pathlib import Path
@@ -63,7 +63,7 @@ class StreamingCTCModel:
         )
 
     @classmethod
-    def from_local(cls, model_path: str | Path) -> Self:
+    def from_local(cls, model_path: str | Path, providers: Optional[List[str]] = None) -> Self:
         """Initialize the model from a local ONNX file.
 
         Args:
@@ -73,7 +73,8 @@ class StreamingCTCModel:
             Self: An instance of StreamingCTCModel ready for inference.
 
         """
-        ort_sess = ort.InferenceSession(model_path)
+        session_options = ort.SessionOptions() if providers else None
+        ort_sess = ort.InferenceSession(model_path, session_options=session_options, providers=providers)
         return cls(ort_sess)
 
     def __init__(self, ort_sess: ort.InferenceSession) -> None:
