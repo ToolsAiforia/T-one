@@ -169,7 +169,7 @@ class StreamingCTCPipeline:
                     end_time=end_time,
                 ),
             )
-        return (phrases, (model_state_next, logprob_state_next))
+        return (phrases, (model_state_next, logprob_state_next), logprob_phrases)
 
     def forward_offline(self, audio: InputType) -> OutputType:
         """Performs offline CTC decoding on a complete audio segment.
