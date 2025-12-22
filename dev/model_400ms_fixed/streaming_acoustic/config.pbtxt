@@ -9,22 +9,13 @@ input [
     dims: [ 3200, 1 ]
   }
 ]
-input [
-  {
-    name: "state"
-    data_type: TYPE_FP16
-    dims: [ 219729 ]
-  }
-]
 
 output [
   {
     name: "logprobs"
     data_type: TYPE_FP32
     dims: [ 13, 35 ]
-  }
-]
-output [
+  },
   {
     name: "state_next"
     data_type: TYPE_FP16
@@ -32,61 +23,30 @@ output [
   }
 ]
 
-dynamic_batching {
-  max_queue_delay_microseconds: 10000
+
+sequence_batching {
+  max_sequence_idle_microseconds: 15000000
+  oldest {
+    max_queue_delay_microseconds: 10000
+    max_candidate_sequences: 4096
+  }
+
+  state [
+    {
+      input_name: "state"
+      output_name: "state_next"
+      data_type: TYPE_FP16
+      dims: [ 219729 ]
+      initial_state: {
+        name: "state_initial"
+        data_type: TYPE_FP16
+        dims: [ 219729 ]
+        zero_data: true
+      }
+    }
+  ]
 }
 
 instance_group [
-    {
-      count: 1
-      kind: KIND_GPU
-      gpus: [ 0 ]
-    }
-]
-
-model_warmup [
-
-    {
-        name: "warmup_sample_1"
-        batch_size: 1
-        count: 10
-        inputs: {
-          key: "signal",
-          value: {
-              data_type: TYPE_INT32
-              dims: [ 3200, 1 ]
-              zero_data: true
-          }
-        }
-        inputs: {
-          key: "state",
-          value: {
-              data_type: TYPE_FP16
-              dims: [ 219729 ]
-              zero_data: true
-          }
-        }
-    },
-
-    {
-        name: "warmup_sample_2"
-        batch_size: 16
-        count: 10
-        inputs: {
-          key: "signal",
-          value: {
-              data_type: TYPE_INT32
-              dims: [ 3200, 1 ]
-              zero_data: true
-          }
-        }
-        inputs: {
-          key: "state",
-          value: {
-              data_type: TYPE_FP16
-              dims: [ 219729 ]
-              zero_data: true
-          }
-        }
-    }
+  { count: 1 kind: KIND_GPU gpus: [0] }
 ]

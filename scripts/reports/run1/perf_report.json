@@ -1,0 +1,78 @@
+{
+  "run": {
+    "timestamp_unix_s": 1766402313.2507112,
+    "triton_url": "localhost:8001",
+    "metrics_url": "http://localhost:8002/metrics",
+    "model_name": "streaming_acoustic",
+    "input_name": "signal",
+    "output_name": "logprobs",
+    "dataset_name": "test_rec_support",
+    "manifest": "/home/mle/aiphoria-asr-training/data/rus_finetune/test_rec_support/tarred_audio_manifest.json",
+    "num_workers": 32,
+    "decoder": "beam"
+  },
+  "workload": {
+    "num_utterances": 0,
+    "total_audio_s": 0,
+    "total_wall_s": 0.1166493110358715,
+    "rtf": NaN,
+    "audio_s_per_s": 0.0,
+    "requests": 0,
+    "requests_per_s": 0.0
+  },
+  "client_latency": {
+    "count": 0.0,
+    "mean_ms": NaN,
+    "p50_ms": NaN,
+    "p90_ms": NaN,
+    "p95_ms": NaN,
+    "p99_ms": NaN
+  },
+  "wer": NaN,
+  "triton_metrics_start": {
+    "nv_inference_request_success": 0.0,
+    "nv_inference_request_failure": 0.0,
+    "nv_inference_count": 0.0,
+    "nv_inference_exec_count": 0.0,
+    "nv_inference_request_duration_us": 0.0,
+    "nv_inference_queue_duration_us": 0.0,
+    "nv_inference_compute_input_duration_us": 0.0,
+    "nv_inference_compute_infer_duration_us": 0.0,
+    "nv_inference_compute_output_duration_us": 0.0,
+    "nv_inference_pending_request_count": 0.0
+  },
+  "triton_metrics_end": {
+    "nv_inference_request_success": 0.0,
+    "nv_inference_request_failure": 0.0,
+    "nv_inference_count": 0.0,
+    "nv_inference_exec_count": 0.0,
+    "nv_inference_request_duration_us": 0.0,
+    "nv_inference_queue_duration_us": 0.0,
+    "nv_inference_compute_input_duration_us": 0.0,
+    "nv_inference_compute_infer_duration_us": 0.0,
+    "nv_inference_compute_output_duration_us": 0.0,
+    "nv_inference_pending_request_count": 0.0
+  },
+  "triton_metrics_delta": {
+    "nv_inference_request_failure": 0.0,
+    "nv_inference_queue_duration_us": 0.0,
+    "nv_inference_compute_infer_duration_us": 0.0,
+    "nv_inference_request_success": 0.0,
+    "nv_inference_compute_input_duration_us": 0.0,
+    "nv_inference_exec_count": 0.0,
+    "nv_inference_compute_output_duration_us": 0.0,
+    "nv_inference_pending_request_count": 0.0,
+    "nv_inference_count": 0.0,
+    "nv_inference_request_duration_us": 0.0
+  },
+  "triton_server_avg_ms": {
+    "request_ms": NaN,
+    "queue_ms": NaN,
+    "compute_input_ms": NaN,
+    "compute_infer_ms": NaN,
+    "compute_output_ms": NaN,
+    "req_success_delta": 0.0,
+    "req_failure_delta": 0.0
+  },
+  "metrics_samples_count": 0
+}

@@ -33,11 +33,30 @@ class Tone(nn.Module):
         feature_extraction_params: dict[str, Any],
         encoder_params: dict[str, Any],
         decoder_params: dict[str, Any],
+        skip_preprocessor: bool = False,
     ) -> None:
         super().__init__()
         self.preprocessor = FilterbankFeatures(**feature_extraction_params)
         self.encoder = Encoder(**encoder_params)
         self.decoder = ConvASRDecoder(**decoder_params)
+        self.skip_preprocessor = skip_preprocessor
+
+    def _as_features_bct(self, x: torch.Tensor) -> torch.Tensor:
+        """
+        Accept (B, C, T) or (B, T, C) and return (B, C, T).
+        """
+        if x.dim() != 3:
+            raise ValueError(f"Expected 3D features tensor, got {tuple(x.shape)}")
+        feat_in = getattr(self.encoder, "_feat_in", None)
+        if feat_in is None:
+            return x
+        if x.size(1) == feat_in:
+            return x
+        if x.size(2) == feat_in:
+            return x.transpose(1, 2)
+        raise ValueError(
+            f"Cannot infer feature layout. Expected one dim == feat_in={feat_in}, got {tuple(x.shape)}"
+        )
 
     def forward(
         self,
@@ -60,10 +79,18 @@ class Tone(nn.Module):
                 of shape (B,).
 
         """
-        processed_signal, processed_signal_length = self.preprocessor(
-            waveform=input_signal,
-            waveform_lens=input_signal_length,
-        )
+        if self.skip_preprocessor:
+            # log-mel features
+            # input_signal: (B, C, T) or (B, T, C), where C == n_mels
+            processed_signal = self._as_features_bct(input_signal)
+            processed_signal_length = input_signal_length
+        else:
+            # raw waveform
+            # input_signal: (B, T_audio), lengths in samples
+            processed_signal, processed_signal_length = self.preprocessor(
+                waveform=input_signal,
+                waveform_lens=input_signal_length,
+            )
         encoded, encoded_len = self.encoder(
             audio_signal=processed_signal,
             length=processed_signal_length,
@@ -116,14 +143,22 @@ class Tone(nn.Module):
              next_state_subsampling_2, next_state_reduction)
 
         """
-        # Normalize and prepare inputs: (B, T, 1) -> (B, T)
-        inputs = inputs[:, :, 0]
-        inputs = (inputs.float() / torch.iinfo(torch.int16).max).half()
-
-        inputs, state_preprocessing = self.preprocessor.forward_streaming(
-            waveform=inputs,
-            state=state_preprocessing,
-        )
+        if self.skip_preprocessor:
+            # log-mel features
+            # inputs: (B, C, T) or (B, T, C) where C == n_mels
+            feats = self._as_features_bct(inputs).to(dtype=torch.float16)
+            # Preprocessor state is unused in this mode; keep it for interface compatibility.
+            if state_preprocessing is None:
+                state_preprocessing = feats.new_zeros((feats.size(0), self.preprocessor.state_size))
+        else:
+            # raw audio
+            # inputs: (B, T, 1) int32 in [-32768, 32767]
+            wav = inputs[:, :, 0]
+            wav = (wav.float() / torch.iinfo(torch.int16).max).half()
+            feats, state_preprocessing = self.preprocessor.forward_streaming(
+                waveform=wav,
+                state=state_preprocessing,
+            )
 
         # Transpose states from (B, N, ...) to (N, B, ...) for internal processing
         state_mhsa = state_mhsa.transpose(0, 1)
@@ -135,7 +170,7 @@ class Tone(nn.Module):
 
         # print(f"Before encoder sub-sampling:\n{inputs.shape=}")
         encoder_output, _ = self.encoder(
-            audio_signal=inputs,
+            audio_signal=feats,
             state_mhsa=state_mhsa,
             state_conv=state_conv,
             state_mhsa_len=state_mhsa_len,
@@ -148,7 +183,7 @@ class Tone(nn.Module):
         next_state = self.encoder.state.next()
 
         out = (
-            self.decoder(encoder_output=encoder_output),
+            self.decoder(encoder_output=encoder_output).float(),
             state_preprocessing,
             next_state.mhsa.transpose(0, 1),
             next_state.conv.transpose(0, 1),
@@ -157,7 +192,8 @@ class Tone(nn.Module):
             next_state.subsampling[1],
             next_state.reduction,
         )
-        return cast_all(out, from_dtype=torch.float16, to_dtype=torch.float32)
+        return out
+        # return cast_all(out, from_dtype=torch.float16, to_dtype=torch.float32)
 
     def get_initial_state(
         self,

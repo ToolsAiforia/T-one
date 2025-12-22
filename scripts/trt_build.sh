@@ -1,7 +1,7 @@
 BATCH_SIZE=16
 
 docker run --gpus all --rm -it \
-  -v $(pwd)/../dev/model_400ms_fixed:/models \
+  -v $(pwd)/../dev/model_400ms_fixed/streaming_acoustic/1:/models \
   nvcr.io/nvidia/tritonserver:25.06-py3 \
   /usr/src/tensorrt/bin/trtexec \
     --onnx=/models/model.onnx \
