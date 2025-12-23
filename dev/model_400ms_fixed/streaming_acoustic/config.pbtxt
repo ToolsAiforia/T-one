@@ -5,8 +5,8 @@ max_batch_size: 16
 input [
   {
     name: "signal"
-    data_type: TYPE_INT32
-    dims: [ 3200, 1 ]
+    data_type: TYPE_FP16
+    dims: [ 40, 64 ]
   }
 ]
 
@@ -22,7 +22,6 @@ output [
     dims: [ 219729 ]
   }
 ]
-
 
 sequence_batching {
   max_sequence_idle_microseconds: 15000000
