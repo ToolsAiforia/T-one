@@ -100,7 +100,8 @@ class Tone(nn.Module):
 
     def forward_for_export(
         self,
-        inputs: torch.Tensor,
+        audio_signal: torch.Tensor,
+        length: torch.Tensor | None = None,
         state_preprocessing: torch.Tensor | None = None,
         state_mhsa: torch.Tensor | None = None,
         state_conv: torch.Tensor | None = None,
@@ -116,8 +117,12 @@ class Tone(nn.Module):
         tensors are expected to have the batch dimension first.
 
         Args:
-            inputs (torch.Tensor): A batch of raw audio signals of shape (B, T, 1).
-                B is batch size, T represents timesteps.
+            audio_signal (torch.Tensor): A batch of raw audio signals of shape (B, T, 1)
+                or log-mel features of shape (B, C, T).
+            length (torch.Tensor | None): Optional per-sample lengths (B,) or (B, 1).
+                Required when skip_preprocessor=True (features path), in frames (T).
+                When skip_preprocessor=False and provided, it is interpreted as raw
+                sample length and converted to frame lengths for masking.
             state_preprocessing (torch.Tensor | None): The state for the
                 `FilterbankFeatures` preprocessor.
             state_mhsa (torch.Tensor | None): The state for MHSA layers in the
@@ -145,20 +150,24 @@ class Tone(nn.Module):
         """
         if self.skip_preprocessor:
             # log-mel features
-            # inputs: (B, C, T) or (B, T, C) where C == n_mels
-            feats = self._as_features_bct(inputs).to(dtype=torch.float16)
+            # audio_signal: (B, C, T) or (B, T, C) where C == n_mels
+            feats = self._as_features_bct(audio_signal).to(dtype=torch.float16)
             # Preprocessor state is unused in this mode; keep it for interface compatibility.
             if state_preprocessing is None:
                 state_preprocessing = feats.new_zeros((feats.size(0), self.preprocessor.state_size))
+            if length is None:
+                raise ValueError("`length` is required when skip_preprocessor=True (feature input).")
+            length = length.view(-1).to(dtype=torch.int64, device=feats.device)
         else:
             # raw audio
-            # inputs: (B, T, 1) int32 in [-32768, 32767]
-            wav = inputs[:, :, 0]
+            # audio_signal: (B, T, 1) int32 in [-32768, 32767]
+            wav = audio_signal[:, :, 0]
             wav = (wav.float() / torch.iinfo(torch.int16).max).half()
             feats, state_preprocessing = self.preprocessor.forward_streaming(
                 waveform=wav,
                 state=state_preprocessing,
             )
+            length = None
 
         # Transpose states from (B, N, ...) to (N, B, ...) for internal processing
         state_mhsa = state_mhsa.transpose(0, 1)
@@ -168,9 +177,10 @@ class Tone(nn.Module):
         # https://github.com/triton-inference-server/server/issues/3901
         state_mhsa_len = state_mhsa_len[:, 0]
 
-        # print(f"Before encoder sub-sampling:\n{inputs.shape=}")
+        # print(f"Before encoder sub-sampling:\n{audio_signal.shape=}")
         encoder_output, _ = self.encoder(
             audio_signal=feats,
+            length=length,
             state_mhsa=state_mhsa,
             state_conv=state_conv,
             state_mhsa_len=state_mhsa_len,

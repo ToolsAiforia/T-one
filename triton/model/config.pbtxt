@@ -1,25 +1,28 @@
-name: "streaming_acoustic"
+name: "model"
 platform: "tensorrt_plan"
 max_batch_size: 16
 
-input [
+input: [
   {
-    name: "signal"
-    data_type: TYPE_FP16
-    dims: [ 40, 64 ]
+    name: "length"
+    data_type: TYPE_INT64
+    dims: [1]
+    reshape: {
+      shape: [ ]
+    }
+  },
+  {
+    name: "audio_signal"
+    data_type: TYPE_FP32
+    dims: [ 64, -1 ]
   }
 ]
 
 output [
   {
-    name: "logprobs"
+    name: "decoder_logprobs"
     data_type: TYPE_FP32
-    dims: [ 13, 35 ]
-  },
-  {
-    name: "state_next"
-    data_type: TYPE_FP16
-    dims: [ 219729 ]
+    dims: [ -1, 35 ]
   }
 ]
 

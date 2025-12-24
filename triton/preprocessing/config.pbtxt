@@ -1,0 +1,30 @@
+backend: "dali"
+max_batch_size: 16
+default_model_filename: "features_8k_tone.py"
+
+dynamic_batching { preserve_ordering: true }
+
+instance_group [{ count: 1 kind: KIND_GPU }]
+
+input [
+  {
+    name: "audio_data"
+    data_type: TYPE_FP32
+    dims: [ -1 ]
+  }
+]
+
+output [
+  {
+    name: "DALI_OUTPUT_0"
+    data_type: TYPE_FP32
+    # dims: [ 80, -1 ]
+    dims: [ 64, -1 ]
+  },
+  {
+    name: "DALI_OUTPUT_1"
+    data_type: TYPE_INT64
+    dims: [ 1 ]
+    reshape: { shape: [] }
+  }
+]

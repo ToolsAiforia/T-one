@@ -37,7 +37,9 @@ class ModelToExport(torch.nn.Module):
 
     Export input:
       - default (skip_preprocessor=False): raw audio int32, (B, T_samples, 1)
-      - if skip_preprocessor=True: log-mel features float16, (B, T_frames, C=n_mels)
+      - if skip_preprocessor=True: log-mel features float32, (B, C=n_mels, T_frames)
+    Length input:
+      - int64, (B,) for both modes; used for compatibility with Triton configs
     """
 
     _model: Tone
@@ -48,13 +50,13 @@ class ModelToExport(torch.nn.Module):
     _skip_preprocessor: bool
 
     @property
-    def input_sample(self) -> tuple[torch.Tensor, torch.Tensor]:
+    def input_sample(self) -> tuple[torch.Tensor, torch.Tensor, torch.Tensor]:
         """Dummy input tuple for tracing/testing/export."""
         if self._skip_preprocessor:
-            # features: (B, T_frames, C)
+            # features: (B, C, T_frames)
             signal = torch.randn(
-                (DUMMY_BATCH_SIZE, self._signal_len, self._feat_dim),
-                dtype=torch.float16,
+                (DUMMY_BATCH_SIZE, self._feat_dim, self._signal_len),
+                dtype=torch.float32,
             )
         else:
             # raw audio: (B, T_samples, 1)
@@ -64,7 +66,12 @@ class ModelToExport(torch.nn.Module):
                 (DUMMY_BATCH_SIZE, self._signal_len, 1),
                 dtype=torch.int32,
             )
-        return signal, self.get_initial_state(DUMMY_BATCH_SIZE)
+        length = torch.full(
+            (DUMMY_BATCH_SIZE,),
+            self._signal_len,
+            dtype=torch.int64,
+        )
+        return signal, length, self.get_initial_state(DUMMY_BATCH_SIZE)
 
     def __init__(
         self,
@@ -154,7 +161,8 @@ class ModelToExport(torch.nn.Module):
 
     def forward(
         self,
-        signal: torch.Tensor,
+        audio_signal: torch.Tensor,
+        length: torch.Tensor,
         state: torch.Tensor,
     ) -> tuple[torch.Tensor, torch.Tensor]:
         """Forward pass using a single fused state tensor."""
@@ -163,9 +171,10 @@ class ModelToExport(torch.nn.Module):
             for place, shape in zip(self._state_place, self._state_shape)
         ]
 
-        with torch.amp.autocast(signal.device.type, dtype=torch.float16):
+        with torch.amp.autocast(audio_signal.device.type, dtype=torch.float16):
             res, *state_next = self._model.forward_for_export(
-                signal,
+                audio_signal,
+                length,
                 *state_parts[:3],
                 state_mhsa_len.int(),
                 *state_parts[3:],
@@ -193,10 +202,16 @@ def _export_onnx(model: ModelToExport) -> bytes:
         model,
         model.input_sample,
         onnx_model_bytes,
-        input_names=["signal", "state"],
-        output_names=["logprobs", "state_next"],
+        input_names=["audio_signal", "length", "state"],
+        output_names=["decoder_logprobs", "state_next"],
         opset_version=17,
-        dynamic_axes={k: {0: "batch_size"} for k in ["signal", "state", "logprobs", "state_next"]},
+        dynamic_axes={
+            "audio_signal": {0: "batch_size"},
+            "length": {0: "batch_size"},
+            "state": {0: "batch_size"},
+            "decoder_logprobs": {0: "batch_size"},
+            "state_next": {0: "batch_size"},
+        },
     )
 
     onnx_model_bytes.seek(0)

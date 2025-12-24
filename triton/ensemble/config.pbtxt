@@ -1,0 +1,55 @@
+platform: "ensemble"
+max_batch_size: 16
+
+input [
+  {
+    name: "AUDIO_CHUNK"
+    data_type: TYPE_FP32
+    dims: [ -1 ]
+  }
+]
+
+output [
+  {
+    name: "logprobs"
+    data_type: TYPE_FP32
+    dims: [ 13, 35 ]
+  }
+]
+
+ensemble_scheduling {
+  step [
+    {
+      model_name: "preprocessing"
+      model_version: -1
+      input_map {
+        key: "audio_data"
+        value: "AUDIO_CHUNK"
+      }
+      output_map {
+        key: "DALI_OUTPUT_0"
+        value: "audio_signal"
+      }
+      output_map {
+        key: "DALI_OUTPUT_1"
+        value: "audio_len"
+      }
+    },
+    {
+      model_name: "model"
+      model_version: -1
+      input_map {
+        key: "audio_signal"
+        value: "audio_signal"
+      }
+      input_map {
+        key: "length"
+        value: "audio_len"
+      }
+      output_map {
+        key: "decoder_logprobs"
+        value: "logprobs"
+      }
+    }
+  ]
+}

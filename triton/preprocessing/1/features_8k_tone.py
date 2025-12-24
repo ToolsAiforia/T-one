@@ -17,34 +17,15 @@ WINDOW_SIZE_SEC = 0.02
 NFFT = 160
 WIN_LENGTH = int(SAMPLE_RATE * WINDOW_SIZE_SEC)    # 160
 HOP_LENGTH = int(SAMPLE_RATE * WINDOW_STRIDE_SEC)  # 80
-STATE_SIZE = NFFT - HOP_LENGTH                      # 80
-
-INT16_MAX = float(np.iinfo(np.int16).max)          # 32767.0
 
 WINDOW_FN = np.hanning(WIN_LENGTH).astype(np.float32).tolist()
 
 @autoserialize
 @pipeline_def(batch_size=MAX_BATCH_SIZE, num_threads=4, device_id=0)
 def pipe() -> Any:
-    # Take PCM-range samples as int32, shape (T, 1)
-    audio_i32 = fn.external_source(
-        name="audio_data",
-        no_copy=False,          # for correctness/debug, start with False
-        device="gpu",
-        dtype=types.INT32,
-        ndim=2,
-    )
-
-    # Normalize to [-1, 1] like Torch preprocessor
-    audio = fn.cast(audio_i32, dtype=types.FLOAT) / INT16_MAX
-
-    # Left-pad zeros for the STFT window context
-    left_pad = types.Constant(0.0, dtype=types.FLOAT, shape=(STATE_SIZE, 1), device="gpu")
-    audio = fn.cat(left_pad, audio, axis=0)
-
-    # Preemphasis (border clamp matches DALI default behavior) :contentReference[oaicite:2]{index=2}
+    # Assume that audio is already padded with 80 samples from prev window
+    audio = fn.external_source(name="audio_data", no_copy=True).gpu()
     audio = fn.preemphasis_filter(audio, preemph_coeff=0.97, border="clamp")
-
     spec = fn.spectrogram(
         audio,
         nfft=NFFT,
@@ -63,12 +44,11 @@ def pipe() -> Any:
         freq_high=SAMPLE_RATE / 2,
         freq_low=0.0,
         mel_formula="slaney",
-        normalize=True,   # DALI: normalize by band width (integral = 1) :contentReference[oaicite:3]{index=3}
+        normalize=True,
     )
 
     mel_log = dali.math.log(mel + LOG_ZERO_GUARD_VALUE)
-
-    # Convert (mel, time) -> (time, mel) => (40, 64)
-    mel_log = fn.transpose(mel_log, perm=[1, 0])
-
-    return fn.cast(mel_log, dtype=types.FLOAT16)
+    # mel_log is (mel, time)
+    ready_signal_shape = mel_log.shape(dtype=types.INT64, device="gpu")[-1:]
+    # so ready signal shape is time
+    return mel_log, ready_signal_shape

@@ -7,7 +7,7 @@ services:
       - "8001:8001"
       - "8002:8002"
     volumes:
-      - /home/mle/T-one/dev/model_400ms_fixed:/models
+      - /home/mle/T-one/triton:/models
     # GPU access (Docker Compose v2)
     deploy:
       resources:
@@ -25,37 +25,3 @@ services:
       interval: 3s
       timeout: 3s
       retries: 40
-
-  # loadtest:
-  #   image: nvcr.io/nvidia/tritonserver:24.02-py3-sdk
-  #   depends_on:
-  #     triton:
-  #       condition: service_healthy
-  #   entrypoint: ["/bin/bash", "-lc"]
-  #   command: >
-  #     python3 - <<'PY'
-  #     import time, urllib.request
-  #     url = "http://triton:8000/v2/health/ready"
-  #     for i in range(120):
-  #         try:
-  #             urllib.request.urlopen(url, timeout=2).read()
-  #             print("Triton is ready")
-  #             break
-  #         except Exception:
-  #             time.sleep(1)
-  #     else:
-  #         raise SystemExit("Triton did not become ready in time")
-  #     PY
-  #     && perf_analyzer
-  #     -u triton:8001
-  #     -i grpc
-  #     -a
-  #     -m streaming_acoustic
-  #     --streaming
-  #     --sequence-length=50
-  #     --measurement-mode=count_windows
-  #     --measurement-request-count=5000
-  #     --request-rate-range=2048:4096:256
-  #     --stability-percentage=100
-  #     --latency-threshold=100
-  #   restart: "no"

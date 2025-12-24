@@ -10,6 +10,7 @@ build/*
 dist/*
 .history
 .vscode
+.idea
 .venv
 .DS_Store
 # data
