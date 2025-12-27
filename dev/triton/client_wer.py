@@ -49,7 +49,7 @@ def resolve_audio_path(base_data_path: Path, dataset_name: str, meta: Dict[str, 
 
 class TritonStreamingCTCModel:
     """
-    Triton implicit-state sequence batching wrapper for StreamingCTCPipeline.
+    Triton streaming wrapper for StreamingCTCPipeline.
 
     forward(signal, counter) returns (logprobs, next_counter)
     where counter is mocked state:
@@ -68,6 +68,11 @@ class TritonStreamingCTCModel:
         model_name: str,
         input_signal_name: str = "AUDIO_CHUNK",
         output_logprobs_name: str = "logprobs",
+        state_len_name: str = "cache_last_chan_len",
+        state_len_next_name: str = "cache_last_chan_len_next",
+        state_len_shape: Tuple[int, ...] = (1, 1),
+        use_sequence_batching: bool = True,
+        explicit_cache_len: bool = True,
         ssl: bool = False,
         verbose: bool = False,
         preproc_left_context: int = 80,
@@ -77,6 +82,11 @@ class TritonStreamingCTCModel:
         self.model_name = model_name
         self.input_signal_name = input_signal_name
         self.output_logprobs_name = output_logprobs_name
+        self.state_len_name = state_len_name
+        self.state_len_next_name = state_len_next_name
+        self.state_len_shape = tuple(int(x) for x in state_len_shape)
+        self.use_sequence_batching = bool(use_sequence_batching)
+        self.explicit_cache_len = bool(explicit_cache_len)
 
         if preproc_left_context < 0:
             raise ValueError("preproc_left_context must be >= 0")
@@ -85,9 +95,12 @@ class TritonStreamingCTCModel:
         self.preproc_left_context = int(preproc_left_context)
         self.input_scale = float(input_scale)
         self._preproc_state: Optional[np.ndarray] = None
-
+        self._cache_last_channel_len: Optional[np.ndarray] = None
         self._next_sequence_id = 1
         self._active_sequence_id: Optional[int] = None
+
+    def _reset_len_state(self, batch_size: int) -> None:
+        self._cache_last_channel_len = np.zeros((batch_size, *self.state_len_shape), dtype=np.int32)
 
     def _reset_preproc_state(self, batch_size: int) -> None:
         if self.preproc_left_context <= 0:
@@ -131,27 +144,46 @@ class TritonStreamingCTCModel:
         is_start = (int(counter) == 0)
         is_end = (int(counter) == -1)
 
-        if is_start or self._active_sequence_id is None:
-            self._active_sequence_id = self._next_sequence_id
-            self._next_sequence_id += 1
-
-        sid = int(self._active_sequence_id)
+        sequence_id = None
+        if self.use_sequence_batching:
+            if is_start or self._active_sequence_id is None:
+                self._active_sequence_id = self._next_sequence_id
+                self._next_sequence_id += 1
+            sequence_id = int(self._active_sequence_id)
 
         audio_data = self._prepare_audio(signal, reset_state=is_start)
+        batch_size = audio_data.shape[0]
+        if self.explicit_cache_len:
+            if is_start or self._cache_last_channel_len is None or self._cache_last_channel_len.shape[0] != batch_size:
+                self._reset_len_state(batch_size)
 
         inp_signal = grpcclient.InferInput(self.input_signal_name, list(audio_data.shape), "FP32")
         inp_signal.set_data_from_numpy(audio_data)
 
+        inputs = [inp_signal]
+        if self.explicit_cache_len:
+            if self._cache_last_channel_len is None:
+                raise RuntimeError("cache_last_chan_len state is missing")
+            inp_cache_len = grpcclient.InferInput(
+                self.state_len_name,
+                list(self._cache_last_channel_len.shape),
+                "INT32",
+            )
+            inp_cache_len.set_data_from_numpy(self._cache_last_channel_len)
+            inputs.append(inp_cache_len)
+
         outputs = [grpcclient.InferRequestedOutput(self.output_logprobs_name)]
+        if self.explicit_cache_len:
+            outputs.append(grpcclient.InferRequestedOutput(self.state_len_next_name))
 
         try:
             res = self.client.infer(
                 model_name=self.model_name,
-                inputs=[inp_signal],
+                inputs=inputs,
                 outputs=outputs,
-                sequence_id=sid,
-                sequence_start=is_start,
-                sequence_end=is_end,
+                sequence_id=sequence_id,
+                sequence_start=is_start if self.use_sequence_batching else False,
+                sequence_end=is_end if self.use_sequence_batching else False,
             )
         except InferenceServerException as e:
             raise RuntimeError(f"Triton infer failed: {e}") from e
@@ -160,10 +192,17 @@ class TritonStreamingCTCModel:
         if logprobs is None:
             raise RuntimeError(f"No output {self.output_logprobs_name!r}")
 
+        if self.explicit_cache_len:
+            cache_len_next = res.as_numpy(self.state_len_next_name)
+            if cache_len_next is None:
+                raise RuntimeError("Missing cache_last_chan_len_next output from Triton response")
+            self._cache_last_channel_len = cache_len_next
+
         next_counter = 0 if is_end else (int(counter) + 1)
         if is_end:
             self._active_sequence_id = None
             self._preproc_state = None
+            self._cache_last_channel_len = None
 
         return logprobs, next_counter
 
@@ -184,6 +223,25 @@ def parse_args() -> argparse.Namespace:
     p.add_argument("--output-logprobs-name", type=str, default="logprobs")
     p.add_argument("--ssl", action="store_true")
     p.add_argument("--verbose", action="store_true")
+    p.add_argument(
+        "--no-sequence-batching",
+        dest="sequence_batching",
+        action="store_false",
+        help="Disable Triton sequence batching (use explicit states only).",
+    )
+    p.add_argument(
+        "--explicit-cache-len",
+        dest="explicit_cache_len",
+        action="store_true",
+        help="Enable explicit cache_last_chan_len input/output.",
+    )
+    p.add_argument(
+        "--no-explicit-cache-len",
+        dest="explicit_cache_len",
+        action="store_false",
+        help="Disable explicit cache_last_chan_len input/output.",
+    )
+    p.set_defaults(sequence_batching=True, explicit_cache_len=False)
 
     # Preprocessor streaming state
     p.add_argument(
@@ -224,6 +282,8 @@ def main() -> None:
         model_name=args.model_name,
         input_signal_name=args.input_signal_name,
         output_logprobs_name=args.output_logprobs_name,
+        use_sequence_batching=args.sequence_batching,
+        explicit_cache_len=args.explicit_cache_len,
         ssl=args.ssl,
         verbose=args.verbose,
         preproc_left_context=args.preproc_left_context,

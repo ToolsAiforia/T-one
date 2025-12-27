@@ -1,6 +1,6 @@
 services:
   triton:
-    image: nvcr.io/nvidia/tritonserver:25.06-py3
+    image: nvcr.io/nvidia/tritonserver:25.04-py3
     command: ["tritonserver", "--model-repository=/models"]
     ports:
       - "8000:8000"

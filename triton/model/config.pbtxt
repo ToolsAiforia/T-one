@@ -6,10 +6,7 @@ input: [
   {
     name: "length"
     data_type: TYPE_INT64
-    dims: [1]
-    reshape: {
-      shape: [ ]
-    }
+    dims: [ ]
   },
   {
     name: "audio_signal"
@@ -18,7 +15,7 @@ input: [
   }
 ]
 
-output [
+output: [
   {
     name: "decoder_logprobs"
     data_type: TYPE_FP32
@@ -33,22 +30,46 @@ sequence_batching {
     max_candidate_sequences: 4096
   }
 
-  state [
+  state: [
     {
-      input_name: "state"
-      output_name: "state_next"
-      data_type: TYPE_FP16
-      dims: [ 219729 ]
+      input_name: "cache_last_chan_len"
+      output_name: "cache_last_chan_len_next"
+      data_type: TYPE_INT32
+      dims: [ 1 ]
       initial_state: {
-        name: "state_initial"
+        name: "cache_last_chan_len_initial"
+        data_type: TYPE_INT32
+        dims: [ 1 ]
+        zero_data: true
+      }
+    },
+    {
+      input_name: "cache_last_channel"
+      output_name: "cache_last_channel_next"
+      data_type: TYPE_FP16
+      dims: [ 32, 8, 50 ]
+      initial_state: {
+        name: "cache_last_channel_initial"
         data_type: TYPE_FP16
-        dims: [ 219729 ]
+        dims: [ 32, 8, 50 ]
+        zero_data: true
+      }
+    },
+    {
+      input_name: "cache_last_time"
+      output_name: "cache_last_time_next"
+      data_type: TYPE_FP16
+      dims: [ 18, 384, 30 ]
+      initial_state: {
+        name: "cache_last_time_initial"
+        data_type: TYPE_FP16
+        dims: [ 18, 384, 30 ]
         zero_data: true
       }
     }
   ]
 }
 
-instance_group [
-  { count: 1 kind: KIND_GPU gpus: [0] }
+instance_group: [
+  { count: 1 kind: KIND_GPU gpus: [ 0 ] }
 ]
