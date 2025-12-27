@@ -26,6 +26,16 @@ class ToneCTCNemoModel(ModelPT):
         self.ctc_decoding = self._build_ctc_decoding(self.cfg.get("decoding"))
         self.cur_decoder = "ctc"
 
+    @classmethod
+    def list_available_models(cls) -> list[dict[str, str]]:
+        return []
+
+    def setup_training_data(self, *args: Any, **kwargs: Any) -> None:
+        pass
+
+    def setup_validation_data(self, *args: Any, **kwargs: Any) -> None:
+        pass
+
     def _get_tone_config(self) -> dict[str, Any]:
         tone_cfg = self.cfg.get("tone_config")
         if tone_cfg is None:

@@ -95,12 +95,12 @@ class TritonStreamingCTCModel:
         self.preproc_left_context = int(preproc_left_context)
         self.input_scale = float(input_scale)
         self._preproc_state: Optional[np.ndarray] = None
-        self._cache_last_channel_len: Optional[np.ndarray] = None
+        self._cache_last_chan_len: Optional[np.ndarray] = None
         self._next_sequence_id = 1
         self._active_sequence_id: Optional[int] = None
 
     def _reset_len_state(self, batch_size: int) -> None:
-        self._cache_last_channel_len = np.zeros((batch_size, *self.state_len_shape), dtype=np.int32)
+        self._cache_last_chan_len = np.zeros((batch_size, *self.state_len_shape), dtype=np.int64)
 
     def _reset_preproc_state(self, batch_size: int) -> None:
         if self.preproc_left_context <= 0:
@@ -154,7 +154,7 @@ class TritonStreamingCTCModel:
         audio_data = self._prepare_audio(signal, reset_state=is_start)
         batch_size = audio_data.shape[0]
         if self.explicit_cache_len:
-            if is_start or self._cache_last_channel_len is None or self._cache_last_channel_len.shape[0] != batch_size:
+            if is_start or self._cache_last_chan_len is None or self._cache_last_chan_len.shape[0] != batch_size:
                 self._reset_len_state(batch_size)
 
         inp_signal = grpcclient.InferInput(self.input_signal_name, list(audio_data.shape), "FP32")
@@ -162,14 +162,14 @@ class TritonStreamingCTCModel:
 
         inputs = [inp_signal]
         if self.explicit_cache_len:
-            if self._cache_last_channel_len is None:
+            if self._cache_last_chan_len is None:
                 raise RuntimeError("cache_last_chan_len state is missing")
             inp_cache_len = grpcclient.InferInput(
                 self.state_len_name,
-                list(self._cache_last_channel_len.shape),
-                "INT32",
+                list(self._cache_last_chan_len.shape),
+                "INT64",
             )
-            inp_cache_len.set_data_from_numpy(self._cache_last_channel_len)
+            inp_cache_len.set_data_from_numpy(self._cache_last_chan_len)
             inputs.append(inp_cache_len)
 
         outputs = [grpcclient.InferRequestedOutput(self.output_logprobs_name)]
@@ -196,13 +196,13 @@ class TritonStreamingCTCModel:
             cache_len_next = res.as_numpy(self.state_len_next_name)
             if cache_len_next is None:
                 raise RuntimeError("Missing cache_last_chan_len_next output from Triton response")
-            self._cache_last_channel_len = cache_len_next
+            self._cache_last_chan_len = cache_len_next
 
         next_counter = 0 if is_end else (int(counter) + 1)
         if is_end:
             self._active_sequence_id = None
             self._preproc_state = None
-            self._cache_last_channel_len = None
+            self._cache_last_chan_len = None
 
         return logprobs, next_counter
 

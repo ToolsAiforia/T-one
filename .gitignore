@@ -1,3 +1,4 @@
+*.nemo
 *.onnx
 *.pyc
 *.ipynb_checkpoints

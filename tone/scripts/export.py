@@ -125,13 +125,13 @@ class ModelToExport(torch.nn.Module):
             dtype=torch.float16,
             device=device,
         )
-        cache_last_channel_len = torch.zeros(
+        cache_last_chan_len = torch.zeros(
             (DUMMY_BATCH_SIZE, 1),
-            dtype=torch.int32,
+            dtype=torch.int64,
             device=device,
         )
 
-        return signal, length, cache_last_time, cache_last_channel, cache_last_channel_len
+        return signal, length, cache_last_time, cache_last_channel, cache_last_chan_len
 
     def __init__(
         self,
@@ -241,7 +241,7 @@ class ModelToExport(torch.nn.Module):
         print(f"audio_signal fixed shape (excl batch) = {(self._feat_dim, self._signal_len) if self._skip_preprocessor else (self._signal_len, 1)}")
         print(f"cache_last_time        (B, {self._cache_last_time_shape[0]}, {self._cache_last_time_shape[1]}, {self._cache_last_time_shape[2]})  fp16")
         print(f"cache_last_channel     (B, {self._cache_last_channel_shape[0]}, {self._cache_last_channel_shape[1]}, {self._cache_last_channel_shape[2]})  fp16")
-        print("cache_last_chan_len (B, 1) int32")
+        print("cache_last_chan_len (B, 1) int64")
         print("--- Internal packing ---")
         print(f"mhsa  state (B, {self._shape_mhsa[0]}, {self._shape_mhsa[1]}, {self._shape_mhsa[2]})")
         print(f"conv  state (B, {self._shape_conv[0]}, {self._shape_conv[1]}, {self._shape_conv[2]})")
@@ -294,7 +294,7 @@ class ModelToExport(torch.nn.Module):
         self,
         cache_last_time: torch.Tensor,
         cache_last_channel: torch.Tensor,
-        cache_last_channel_len: torch.Tensor,
+        cache_last_chan_len: torch.Tensor,
     ) -> tuple[torch.Tensor, torch.Tensor, torch.Tensor, torch.Tensor, torch.Tensor, torch.Tensor]:
         """Convert external cache tensors into the model's internal state tensors.
 
@@ -327,8 +327,8 @@ class ModelToExport(torch.nn.Module):
         state_sub1 = tail_flat[:, idx1:idx2].reshape(-1, *self._shape_sub1).contiguous()
         state_reduction = tail_flat[:, idx2:idx3].reshape(-1, *self._shape_reduction).contiguous()
 
-        # cache_last_channel_len is handled in forward() where we adapt shape for forward_for_export
-        _ = cache_last_channel_len  # explicitly unused here (handled separately)
+        # cache_last_chan_len is handled in forward() where we adapt shape for forward_for_export
+        _ = cache_last_chan_len  # explicitly unused here (handled separately)
 
         return state_preproc, state_mhsa, state_conv, state_sub1, state_sub2, state_reduction
 
@@ -381,7 +381,7 @@ class ModelToExport(torch.nn.Module):
         length: torch.Tensor,
         cache_last_time: torch.Tensor,
         cache_last_channel: torch.Tensor,
-        cache_last_channel_len: torch.Tensor,
+        cache_last_chan_len: torch.Tensor,
     ) -> tuple[torch.Tensor, torch.Tensor, torch.Tensor, torch.Tensor]:
         """Forward pass using Triton-style multi-tensor streaming cache.
 
@@ -389,24 +389,24 @@ class ModelToExport(torch.nn.Module):
           decoder_logprobs,
           cache_last_time_next,
           cache_last_channel_next,
-          cache_last_channel_len_next
+          cache_last_chan_len_next
         """
         # Unpack float16 caches into internal float16 states
         state_preproc, state_mhsa, state_conv, state_sub1, state_sub2, state_reduction = self._unpack_states(
             cache_last_time=cache_last_time,
             cache_last_channel=cache_last_channel,
-            cache_last_channel_len=cache_last_channel_len,
+            cache_last_chan_len=cache_last_chan_len,
         )
 
-        # Normalize cache_last_channel_len to shape (B,) then adapt to (B,1) for forward_for_export,
+        # Normalize cache_last_chan_len to shape (B,) then adapt to (B,1) for forward_for_export,
         # because model.forward_for_export expects to do state_mhsa_len[:, 0].
-        if cache_last_channel_len.dim() == 2 and cache_last_channel_len.size(1) == 1:
-            cache_last_channel_len = cache_last_channel_len.squeeze(1)
-        elif cache_last_channel_len.dim() != 1:
+        if cache_last_chan_len.dim() == 2 and cache_last_chan_len.size(1) == 1:
+            cache_last_chan_len = cache_last_chan_len.squeeze(1)
+        elif cache_last_chan_len.dim() != 1:
             raise ValueError(
-                f"cache_last_channel_len must be (B,) or (B,1). Got {tuple(cache_last_channel_len.shape)}"
+                f"cache_last_chan_len must be (B,) or (B,1). Got {tuple(cache_last_chan_len.shape)}"
             )
-        state_mhsa_len_in = cache_last_channel_len.to(dtype=torch.int64).unsqueeze(1)  # (B,1)
+        state_mhsa_len_in = cache_last_chan_len.to(dtype=torch.int64).unsqueeze(1)  # (B,1)
 
         with torch.amp.autocast(audio_signal.device.type, dtype=torch.float16):
             (
@@ -440,14 +440,14 @@ class ModelToExport(torch.nn.Module):
             state_reduction=next_reduction,
         )
 
-        # next_mhsa_len is (B,1) (per Tone.forward_for_export); emit (B,1) int32.
-        cache_last_channel_len_next = next_mhsa_len.to(dtype=torch.int32)
+        # next_mhsa_len is (B,1) (per Tone.forward_for_export); emit (B,1) int64.
+        cache_last_chan_len_next = next_mhsa_len.to(dtype=torch.int64)
 
         # Ensure state outputs are fp16 (consistent with current export behavior / TensorRT fp16)
         cache_last_time_next = cache_last_time_next.half()
         cache_last_channel_next = cache_last_channel_next.half()
 
-        return decoder_logprobs, cache_last_time_next, cache_last_channel_next, cache_last_channel_len_next
+        return decoder_logprobs, cache_last_time_next, cache_last_channel_next, cache_last_chan_len_next
 
 
 def _export_onnx(model: ModelToExport) -> bytes:
