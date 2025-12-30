@@ -108,22 +108,12 @@ def _ensure_model_nemo(resources_dir: Path, nemo_path: Path | None, args: argpar
     return target
 
 
-def _write_lexicon(target: Path) -> None:
-    from tone.decoder import LABELS
-
-    target.parent.mkdir(parents=True, exist_ok=True)
-    lines = []
-    for label in LABELS:
-        lines.append(f"{label} {label}\n")
-    target.write_text("".join(lines), encoding="utf-8")
-
-
 def _ensure_lexicon(resources_dir: Path, force: bool) -> Path:
     target = resources_dir / LEXICON_NAME
-    if target.exists() and not force:
+    if target.exists():
         return target
-    _write_lexicon(target)
-    return target
+
+    raise ValueError(f"{target} not found")
 
 
 def _ensure_vad_onnx(resources_dir: Path) -> Path:

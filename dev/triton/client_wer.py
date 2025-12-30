@@ -70,7 +70,7 @@ class TritonStreamingCTCModel:
         output_logprobs_name: str = "logprobs",
         state_len_name: str = "cache_last_chan_len",
         state_len_next_name: str = "cache_last_chan_len_next",
-        state_len_shape: Tuple[int, ...] = (1, 1),
+        state_len_shape: Tuple[int, ...] = (),
         use_sequence_batching: bool = True,
         explicit_cache_len: bool = True,
         ssl: bool = False,

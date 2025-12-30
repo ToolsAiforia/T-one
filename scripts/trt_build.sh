@@ -1,7 +1,7 @@
 #!/usr/bin/env bash
 set -euo pipefail
 
-BATCH_SIZE=16
+BATCH_SIZE=64
 MODEL_DIR="$(pwd)/../triton/model/1"
 ONNX_PATH="${MODEL_DIR}/model.onnx"
 TRITON_IMAGE="${TRITON_IMAGE:-nvcr.io/nvidia/tritonserver:25.04-py3}"

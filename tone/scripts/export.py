@@ -126,7 +126,7 @@ class ModelToExport(torch.nn.Module):
             device=device,
         )
         cache_last_chan_len = torch.zeros(
-            (DUMMY_BATCH_SIZE, 1),
+            (DUMMY_BATCH_SIZE,),
             dtype=torch.int64,
             device=device,
         )
@@ -241,7 +241,7 @@ class ModelToExport(torch.nn.Module):
         print(f"audio_signal fixed shape (excl batch) = {(self._feat_dim, self._signal_len) if self._skip_preprocessor else (self._signal_len, 1)}")
         print(f"cache_last_time        (B, {self._cache_last_time_shape[0]}, {self._cache_last_time_shape[1]}, {self._cache_last_time_shape[2]})  fp16")
         print(f"cache_last_channel     (B, {self._cache_last_channel_shape[0]}, {self._cache_last_channel_shape[1]}, {self._cache_last_channel_shape[2]})  fp16")
-        print("cache_last_chan_len (B, 1) int64")
+        print("cache_last_chan_len (B) int64")
         print("--- Internal packing ---")
         print(f"mhsa  state (B, {self._shape_mhsa[0]}, {self._shape_mhsa[1]}, {self._shape_mhsa[2]})")
         print(f"conv  state (B, {self._shape_conv[0]}, {self._shape_conv[1]}, {self._shape_conv[2]})")
@@ -440,8 +440,15 @@ class ModelToExport(torch.nn.Module):
             state_reduction=next_reduction,
         )
 
-        # next_mhsa_len is (B,1) (per Tone.forward_for_export); emit (B,1) int64.
+        # next_mhsa_len is (B,1) (per Tone.forward_for_export); emit (B,) int64.
         cache_last_chan_len_next = next_mhsa_len.to(dtype=torch.int64)
+        if cache_last_chan_len_next.dim() == 2 and cache_last_chan_len_next.size(1) == 1:
+            cache_last_chan_len_next = cache_last_chan_len_next.squeeze(1)
+        elif cache_last_chan_len_next.dim() != 1:
+            raise ValueError(
+                "cache_last_chan_len_next must be (B,1) or (B,) from the export model. "
+                f"Got {tuple(cache_last_chan_len_next.shape)}"
+            )
 
         # Ensure state outputs are fp16 (consistent with current export behavior / TensorRT fp16)
         cache_last_time_next = cache_last_time_next.half()
@@ -506,8 +513,9 @@ def _export_onnx(model: ModelToExport) -> bytes:
         for j in range(1, 4):
             onnx_model.graph.output[2].type.tensor_type.shape.dim[j].dim_value = int(output_sample[2].size(j))
 
-        # cache_last_chan_len_next: (B, 1)
-        onnx_model.graph.output[3].type.tensor_type.shape.dim[1].dim_value = int(output_sample[3].size(1))
+        # cache_last_chan_len_next: (B,)
+        if output_sample[3].dim() > 1:
+            onnx_model.graph.output[3].type.tensor_type.shape.dim[1].dim_value = int(output_sample[3].size(1))
 
         out_bytes = io.BytesIO()
         onnx.save(onnx_model, out_bytes)

@@ -35,11 +35,9 @@ sequence_batching {
       input_name: "cache_last_chan_len"
       output_name: "cache_last_chan_len_next"
       data_type: TYPE_INT64
-      dims: [ 1 ]
       initial_state: {
         name: "cache_last_chan_len_initial"
         data_type: TYPE_INT64
-        dims: [ 1 ]
         zero_data: true
       }
     },
