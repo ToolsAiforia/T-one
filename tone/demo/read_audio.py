@@ -64,3 +64,25 @@ def read_stream_example_audio(*, long_audio: bool = False) -> Iterator[Streaming
         audio_chunk = audio[i : i + chunk_size]
         audio_chunk = np.pad(audio_chunk, (0, -len(audio_chunk) % chunk_size))
         yield audio_chunk
+
+def read_stream_audio(path_to_file: Path | str) -> Iterator[StreamingCTCPipeline.InputType]:
+    """Stream audio from a user-specified file in chunks for the ASR pipeline.
+
+    The function reads the audio file, resamples to mono 16-bit @ 8 kHz,
+    pads it appropriately and streams it in fixed-size chunks.
+
+    Args:
+        path_to_file (Path | str): Path to the user-provided audio file.
+
+    Returns:
+        Iterator[StreamingCTCPipeline.InputType]: Iterator over audio chunks.
+    """
+    chunk_size = StreamingCTCPipeline.CHUNK_SIZE
+    audio = read_audio(path_to_file)
+    # Apply padding as described in StreamingCTCPipeline
+    audio = np.pad(audio, (StreamingCTCPipeline.PADDING, StreamingCTCPipeline.PADDING))
+
+    for i in range(0, len(audio), chunk_size):
+        audio_chunk = audio[i : i + chunk_size]
+        audio_chunk = np.pad(audio_chunk, (0, -len(audio_chunk) % chunk_size))
+        yield audio_chunk
