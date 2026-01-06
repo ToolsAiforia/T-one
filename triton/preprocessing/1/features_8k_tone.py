@@ -25,6 +25,9 @@ WINDOW_FN = np.hanning(WIN_LENGTH).astype(np.float32).tolist()
 def pipe() -> Any:
     # Assume that audio is already padded with 80 samples from prev window
     audio = fn.external_source(name="audio_data", no_copy=True).gpu()
+    # Quantize to fp16 to mirror ONNX streaming preproc, but keep fp32 for DALI ops.
+    audio = fn.cast(audio, dtype=types.FLOAT16)
+    audio = fn.cast(audio, dtype=types.FLOAT)
     audio = fn.preemphasis_filter(audio, preemph_coeff=0.97, border="clamp")
     spec = fn.spectrogram(
         audio,
@@ -48,6 +51,9 @@ def pipe() -> Any:
     )
 
     mel_log = dali.math.log(mel + LOG_ZERO_GUARD_VALUE)
+    # Match ONNX: preproc outputs fp16 features; keep fp32 interface for Triton.
+    mel_log = fn.cast(mel_log, dtype=types.FLOAT16)
+    mel_log = fn.cast(mel_log, dtype=types.FLOAT)
     # mel_log is (mel, time)
     ready_signal_shape = mel_log.shape(dtype=types.INT64, device="gpu")[-1:]
     # so ready signal shape is time

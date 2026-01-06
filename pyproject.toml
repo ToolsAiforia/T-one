@@ -40,6 +40,12 @@ finetune = [
     "torchaudio (>=2.7.0,<3.0.0)",
 ]
 
+triton = [
+    "tritonclient[grpc] (>=2.41.0,<3.0.0)",
+    "tqdm (>=4.0.0,<5.0.0)",
+    "nemo_toolkit (>=1.0.0,<3.0.0)",
+]
+
 [project.scripts]
 tone = 'tone.__main__:main'
 
