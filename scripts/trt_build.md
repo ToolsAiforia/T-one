@@ -9,7 +9,15 @@ between TRT and ONNX for the T-one streaming model.
 - ONNX backend in Triton matched local ORT closely, so the feature pipeline and
   state handling were correct.
 - The fix is mixed precision: keep LayerNorm/Softmax/LogSoftmax in FP32 and
-  allow FP16 everywhere else.
+  allow BF16 (best so far) or FP16 everywhere else.
+
+## BF16 mixed-precision (best WER so far)
+- Precision: BF16 engine with LayerNormalization/Softmax/LogSoftmax forced FP32.
+- Flags: `--bf16 --precisionConstraints=obey --layerPrecisions=<LN/Softmax/LogSoftmax>:fp32
+  --layerOutputTypes=<LN/Softmax/LogSoftmax>:fp32 --noTF32 --builderOptimizationLevel=0`
+  (no `--stronglyTyped`).
+- WER (test_rec_support, beam + KenLM, `client_wer.py`): 0.128937.
+- Same precision with `--builderOptimizationLevel=5`: 0.129429.
 
 ## Default build in `trt_build.sh`
 The script now defaults to the "good" build:

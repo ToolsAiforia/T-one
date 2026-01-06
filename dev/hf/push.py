@@ -7,7 +7,6 @@ from huggingface_hub import login, upload_folder
 REPO_ROOT = Path(__file__).resolve().parents[2]
 DEFAULT_REPO_ID = "AiphoriaTech/T-one"
 MODEL_NAME = "model.nemo"
-LEXICON_NAME = "kenlm.flashlight_lexicon"
 VAD_ONNX_RELATIVE_PATH = Path("onnx/silero_vad.onnx")
 TENSORRT_SUBDIR = Path("TensorRT/25.04/l40s")
 DEFAULT_TRITON_MODEL_DIR = REPO_ROOT / "triton" / "model" / "1"
@@ -108,14 +107,6 @@ def _ensure_model_nemo(resources_dir: Path, nemo_path: Path | None, args: argpar
     return target
 
 
-def _ensure_lexicon(resources_dir: Path, force: bool) -> Path:
-    target = resources_dir / LEXICON_NAME
-    if target.exists():
-        return target
-
-    raise ValueError(f"{target} not found")
-
-
 def _ensure_vad_onnx(resources_dir: Path) -> Path:
     target = resources_dir / VAD_ONNX_RELATIVE_PATH
     if not target.exists():
@@ -140,7 +131,6 @@ def _collect_resources(resources_dir: Path, args: argparse.Namespace) -> None:
         "TensorRT model.plan",
         args.force,
     )
-    _ensure_lexicon(resources_dir, args.force)
     _ensure_vad_onnx(resources_dir)
 
 

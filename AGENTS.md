@@ -27,6 +27,14 @@ T-one Triton deployment and the ONNX pipeline.
   - OPT/MAX shapes for `BATCH_SIZE=64`
 - `TRT_STRONGLY_TYPED=1` by default (can be overridden).
 
+## TRT precision results (Jan 2026)
+- Best TRT build so far: BF16 with LayerNormalization/Softmax/LogSoftmax forced
+  FP32 (no `--stronglyTyped`, `--precisionConstraints=obey`,
+  `--layerPrecisions/--layerOutputTypes`, `--noTF32`,
+  `--builderOptimizationLevel=0`).
+- WER on `test_rec_support` (beam + KenLM, `client_wer.py`): 0.128937.
+- Same precision with `--builderOptimizationLevel=5`: WER 0.129429.
+
 ## Triton repository layout
 - `T-one/triton/ensemble/config.pbtxt` is an ensemble:
   `AUDIO_CHUNK (FP32, 1D)` -> `preprocessing` (DALI) -> `model` (ONNX/TRT).
