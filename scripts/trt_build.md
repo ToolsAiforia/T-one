@@ -9,21 +9,24 @@ between TRT and ONNX for the T-one streaming model.
 - ONNX backend in Triton matched local ORT closely, so the feature pipeline and
   state handling were correct.
 - The fix is mixed precision: keep LayerNorm/Softmax/LogSoftmax in FP32 and
-  allow BF16 (best so far) or FP16 everywhere else.
+  run everything else in BF16. Forcing FP16 (especially `*:fp16`) can produce
+  null outputs and WER=1.
 
-## BF16 mixed-precision (best WER so far)
+## BF16 mixed-precision (recommended)
 - Precision: BF16 engine with LayerNormalization/Softmax/LogSoftmax forced FP32.
-- Flags: `--bf16 --precisionConstraints=obey --layerPrecisions=<LN/Softmax/LogSoftmax>:fp32
-  --layerOutputTypes=<LN/Softmax/LogSoftmax>:fp32 --noTF32 --builderOptimizationLevel=0`
+- Recommended build (env for `trt_build.sh`):
+  `TRT_FORCE_BF16_ALL=1 TRT_FORCE_FP16_ALL=0 TRT_FP16=0 TRT_BF16=1 TRT_NO_TF32=1 TRT_OPT_LEVEL=5 ./trt_build.sh`
+- Flags: `--bf16 --precisionConstraints=obey --layerPrecisions=*:bf16,<LN/Softmax/LogSoftmax>:fp32
+  --layerOutputTypes=<LN/Softmax/LogSoftmax>:fp32 --noTF32 --builderOptimizationLevel=5`
   (no `--stronglyTyped`).
-- WER (test_rec_support, beam + KenLM, `client_wer.py`): 0.128937.
-- Same precision with `--builderOptimizationLevel=5`: 0.129429.
+- WER (test_rec_support, beam + KenLM, `client_wer.py`, 2026-01-14): 0.130906.
 
-## Default build in `trt_build.sh`
-The script now defaults to the "good" build:
+## Script defaults in `trt_build.sh` (not recommended for WER)
+The script defaults to an FP16-focused build:
 - `TRT_FP32_LAYER_TYPES=LayerNormalization,Softmax,LogSoftmax`
 - `TRT_FORCE_FP16_ALL=1` (adds `*:fp16` for all other layers)
 - `TRT_FP16=1` (enables FP16 tactics)
+- `TRT_FORCE_BF16_ALL=0` (use BF16 overrides for the recommended build)
 - `TRT_STRONGLY_TYPED=0`
 - `TRT_NO_TF32=0`
 - `TRT_INPUT_IO_FORMATS` and `TRT_OUTPUT_IO_FORMATS` default to linear (`:chw`)
@@ -43,7 +46,10 @@ Use a Python that has `onnx` installed so the script can read node names.
 
 ```
 cd /home/mle/T-one/scripts
-PYTHON_BIN=/home/mle/T-one/.venv/bin/python ./trt_build.sh
+PYTHON_BIN=/home/mle/T-one/.venv/bin/python \
+  TRT_FORCE_BF16_ALL=1 TRT_FORCE_FP16_ALL=0 TRT_FP16=0 TRT_BF16=1 \
+  TRT_NO_TF32=1 TRT_OPT_LEVEL=5 \
+  ./trt_build.sh
 ```
 
 The engine is written to:
@@ -51,15 +57,20 @@ The engine is written to:
 
 ## Verified WER (beam + KenLM, explicit states, DALI preproc)
 These were measured with `dev/triton/client_wer.py` and the targeted engine:
-- test_rec_support: 0.127461
-- test_collection: 0.151869
-- test_support: 0.194081
+- 2026-01-14 (BF16 + FP32 pins, opt_level=5, noTF32):
+  test_rec_support 0.130906, test_collection 0.154206, test_support 0.192625
+- Historical (different builds): test_rec_support 0.127461, test_collection 0.151869,
+  test_support 0.194081
 
 ## Overrides / troubleshooting
+- BF16 build (recommended):
+  `TRT_FORCE_BF16_ALL=1 TRT_FORCE_FP16_ALL=0 TRT_FP16=0 TRT_BF16=1 TRT_NO_TF32=1 TRT_OPT_LEVEL=5 ./trt_build.sh`
 - Disable targeted FP32 layers:
   `TRT_FP32_LAYER_TYPES="" TRT_FORCE_FP16_ALL=0 ./trt_build.sh`
 - Add or override a specific layer list:
   `TRT_FP32_LAYERS="/decoder/LogSoftmax,/encoder/layers.0/self_attn/Softmax"`
+- If you see null outputs or WER=1, make sure `TRT_FORCE_FP16_ALL=0` and
+  `TRT_FP16=0` when using BF16.
 - If the build fails, set `TRT_FORCE_FP16_ALL=0` to remove the `*:fp16` hard
   constraint and let TRT choose per-layer precision (still pins the listed
   layers to FP32).
